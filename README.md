@@ -89,6 +89,10 @@ smart-push --dry-run
 
 # Force a specific scope or provider
 smart-push --scope auth --provider ollama --model qwen2.5-coder:3b
+
+# Push a specific sub-repository or all dirty sub-repositories in a multi-repo workspace
+git smart-push services/auth
+git smart-push --all-subrepos
 ```
 
 ---

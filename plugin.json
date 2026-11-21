@@ -1,6 +1,6 @@
 {
   "name": "smart-push",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Zero-context-bloat, provider-agnostic Git commit & push Agent Skill (/smart-push) and CLI.",
   "logo": "assets/logo.svg",
   "author": {

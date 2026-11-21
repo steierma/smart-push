@@ -68,4 +68,30 @@ SMART_PUSH_MOCK_MSG="feat: add file a" "$SMART_PUSH" --yes --dir "$T4" --provide
 [[ -z "$(git -C "$T4" ls-files b.txt)" ]] || fail "Expected unstaged b.txt not to be committed when index was non-empty"
 pass "Preserves partial git index when files are already staged"
 
+# Test 5: Multi-repo / Monorepo safety & --all-subrepos support
+T5="${TMP_BASE}/t5-meta"
+setup_fixture_repo "$T5"
+echo "/*
+!/.gitignore" > "${T5}/.gitignore"
+SMART_PUSH_MOCK_MSG="chore: init meta repo" "$SMART_PUSH" --yes --dir "$T5" --provider mock >/dev/null
+
+setup_fixture_repo "${T5}/service-a"
+setup_fixture_repo "${T5}/service-b"
+echo "package a" > "${T5}/service-a/main.go"
+echo "package b" > "${T5}/service-b/main.go"
+
+# Running in --yes mode on clean parent must NOT silently guess; it must report dirty sub-repos
+if "$SMART_PUSH" --yes --dir "$T5" --provider mock >/dev/null 2>&1; then
+  fail "Expected clean meta-repo root with dirty subrepos to prompt/exit in non-interactive mode without --dir"
+fi
+
+# Positional subrepo path works: smart-push <path>
+SMART_PUSH_MOCK_MSG="feat(a): init service a" "$SMART_PUSH" --yes --provider mock "${T5}/service-a" >/dev/null
+[[ "$(git --git-dir="${T5}/service-a-remote.git" log -1 --pretty=%s)" == "feat(a): init service a" ]] || fail "Positional path push failed"
+
+# --all-subrepos commits & pushes remaining dirty child repos independently
+SMART_PUSH_MOCK_MSG="feat(b): init service b" "$SMART_PUSH" --yes --dir "$T5" --all-subrepos --provider mock >/dev/null
+[[ "$(git --git-dir="${T5}/service-b-remote.git" log -1 --pretty=%s)" == "feat(b): init service b" ]] || fail "--all-subrepos push failed"
+pass "Handles multi-repo / monorepo boundaries, positional paths, and --all-subrepos safely"
+
 echo "All tests passed."

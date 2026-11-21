@@ -4,9 +4,11 @@
 
 set -euo pipefail
 
-VERSION="0.1.0"
+VERSION="0.1.1"
+SELF_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 TARGET_DIR="."
 AUTO_CONFIRM=0
+ALL_SUBREPOS=0
 DRY_RUN=0
 COMMIT_ONLY=0
 NO_VERIFY=0
@@ -18,11 +20,12 @@ MAX_DIFF_CHARS="${SMART_PUSH_MAX_DIFF_CHARS:-12000}"
 
 usage() {
   cat <<'EOF'
-Usage: smart-push [options]
+Usage: smart-push [options] [dir]
 
 Options:
   -y, --yes                 Non-interactive mode (commit & push without confirmation)
   -d, --dir <path>          Target Git repository path (default: current directory)
+      --all-subrepos        Commit & push each dirty immediate child Git repository
   -p, --provider <name>     AI provider: auto (default), gemini-api, openai-api,
                             anthropic-api, openrouter-api, ollama, agy, claude,
                             gemini-cli, codex
@@ -37,20 +40,27 @@ Options:
 EOF
 }
 
+ORIG_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -y|--yes) AUTO_CONFIRM=1; shift ;;
+    -y|--yes) AUTO_CONFIRM=1; ORIG_ARGS+=("$1"); shift ;;
     -d|--dir) TARGET_DIR="${2:?Missing argument for --dir}"; shift 2 ;;
-    -p|--provider) PROVIDER="${2:?Missing argument for --provider}"; shift 2 ;;
-    -m|--model) MODEL_OVERRIDE="${2:?Missing argument for --model}"; shift 2 ;;
-    -s|--scope) SCOPE_HINT="${2:?Missing argument for --scope}"; shift 2 ;;
-    --commit-only) COMMIT_ONLY=1; shift ;;
-    --dry-run) DRY_RUN=1; shift ;;
-    --no-verify) NO_VERIFY=1; shift ;;
+    --all-subrepos) ALL_SUBREPOS=1; shift ;;
+    -p|--provider) PROVIDER="${2:?Missing argument for --provider}"; ORIG_ARGS+=("$1" "$2"); shift 2 ;;
+    -m|--model) MODEL_OVERRIDE="${2:?Missing argument for --model}"; ORIG_ARGS+=("$1" "$2"); shift 2 ;;
+    -s|--scope) SCOPE_HINT="${2:?Missing argument for --scope}"; ORIG_ARGS+=("$1" "$2"); shift 2 ;;
+    --commit-only) COMMIT_ONLY=1; ORIG_ARGS+=("$1"); shift ;;
+    --dry-run) DRY_RUN=1; ORIG_ARGS+=("$1"); shift ;;
+    --no-verify) NO_VERIFY=1; ORIG_ARGS+=("$1"); shift ;;
     --metrics-json) METRICS_JSON="${2:?Missing argument for --metrics-json}"; shift 2 ;;
     -v|--version) echo "smart-push ${VERSION}"; exit 0 ;;
     -h|--help) usage; exit 0 ;;
-    *) echo "[smart-push] Unknown option: $1" >&2; usage >&2; exit 2 ;;
+    -*) echo "[smart-push] Unknown option: $1" >&2; usage >&2; exit 2 ;;
+    *)
+      # Support positional directory argument: smart-push <path>
+      TARGET_DIR="$1"
+      shift
+      ;;
   esac
 done
 
@@ -63,7 +73,50 @@ fi
 
 cd "$TARGET_DIR"
 
+# Helper: discover dirty immediate child Git repositories (monorepo / multi-repo workspace support)
+find_dirty_subrepos() {
+  local sub
+  for sub in */; do
+    [[ -d "${sub}.git" || -f "${sub}.git" ]] || continue
+    if [[ -n "$(git -C "$sub" status --porcelain 2>/dev/null)" ]]; then
+      echo "${sub%/}"
+    fi
+  done
+}
+
+run_subrepos() {
+  local subrepos=("$@")
+  if [[ "${#subrepos[@]}" -eq 0 ]]; then
+    echo "[smart-push] Nothing to commit across child repositories."
+    exit 0
+  fi
+  local sub
+  for sub in "${subrepos[@]}"; do
+    echo "[smart-push] === Sub-repository: ${sub} ==="
+    "$SELF_SCRIPT" "${ORIG_ARGS[@]}" --dir "$sub"
+  done
+  exit 0
+}
+
+if [[ "$ALL_SUBREPOS" -eq 1 ]]; then
+  mapfile -t DIRTY_SUBS < <(find_dirty_subrepos)
+  run_subrepos "${DIRTY_SUBS[@]}"
+fi
+
 if ! GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+  mapfile -t DIRTY_SUBS < <(find_dirty_subrepos)
+  if [[ "${#DIRTY_SUBS[@]}" -gt 0 ]]; then
+    if [[ "$AUTO_CONFIRM" -eq 0 && "${#DIRTY_SUBS[@]}" -eq 1 ]]; then
+      printf "[smart-push] Current folder is not a Git repo, but '%s' has changes. Run there? [Y/n] " "${DIRTY_SUBS[0]}"
+      read -r SUB_REPLY
+      if [[ "${SUB_REPLY:-Y}" =~ ^[Yy]$|^$ ]]; then
+        exec "$SELF_SCRIPT" "${ORIG_ARGS[@]}" --dir "${DIRTY_SUBS[0]}"
+      fi
+    fi
+    echo "[smart-push] Not a Git repository ($PWD), but dirty sub-repositories were found: ${DIRTY_SUBS[*]}" >&2
+    echo "[smart-push] Re-run with '--dir <subrepo>' or '--all-subrepos'." >&2
+    exit 1
+  fi
   echo "[smart-push] Error: not inside a Git repository ($PWD)" >&2
   exit 1
 fi
@@ -71,17 +124,25 @@ cd "$GIT_ROOT"
 
 BRANCH="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || git rev-parse --short HEAD)"
 
-# 1. Stage changes if index is currently empty; preserve partial staging if user ran git add -p
+# 1. Stage changes if index is currently empty; preserve partial staging if user ran git add -p.
+#    Protect nested untracked Git repos from being accidentally staged as broken submodule gitlinks.
 STAGED_MODE="preserved-index"
 if git diff --cached --quiet; then
   if [[ -n "$(git status --porcelain)" ]]; then
-    git add -A
+    NESTED_EXCLUDES=()
+    for sub in */; do
+      [[ -d "${sub}.git" ]] || continue
+      if [[ ! -f .gitmodules ]] || ! grep -q "path = ${sub%/}" .gitmodules 2>/dev/null; then
+        NESTED_EXCLUDES+=(":(exclude)${sub%/}")
+      fi
+    done
+    git add -A -- . "${NESTED_EXCLUDES[@]}"
     STAGED_MODE="auto-staged-all"
   fi
 fi
 
 if git diff --cached --quiet; then
-  # Check if there are unpushed local commits
+  # Check if there are unpushed local commits on current repo
   if git rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>&1; then
     AHEAD_COUNT="$(git rev-list --count "@{u}..HEAD")"
     if [[ "$AHEAD_COUNT" -gt 0 && "$DRY_RUN" -eq 0 && "$COMMIT_ONLY" -eq 0 ]]; then
@@ -89,6 +150,20 @@ if git diff --cached --quiet; then
       git push
       exit 0
     fi
+  fi
+  # If root repo is clean, check whether nested sub-repositories have uncommitted changes
+  mapfile -t DIRTY_SUBS < <(find_dirty_subrepos)
+  if [[ "${#DIRTY_SUBS[@]}" -gt 0 ]]; then
+    if [[ "$AUTO_CONFIRM" -eq 0 && "${#DIRTY_SUBS[@]}" -eq 1 ]]; then
+      printf "[smart-push] Root repo is clean, but sub-repository '%s' has changes. Run there? [Y/n] " "${DIRTY_SUBS[0]}"
+      read -r SUB_REPLY
+      if [[ "${SUB_REPLY:-Y}" =~ ^[Yy]$|^$ ]]; then
+        exec "$SELF_SCRIPT" "${ORIG_ARGS[@]}" --dir "${DIRTY_SUBS[0]}"
+      fi
+    fi
+    echo "[smart-push] Root repository is clean, but dirty sub-repositories were found: ${DIRTY_SUBS[*]}" >&2
+    echo "[smart-push] Specify '--dir <subrepo>' (or 'smart-push <subrepo>') or '--all-subrepos'." >&2
+    exit 1
   fi
   echo "[smart-push] Nothing to commit (working tree clean on ${BRANCH})."
   exit 0

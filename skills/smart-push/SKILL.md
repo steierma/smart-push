@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires git, bash, and python3; uses any installed AI CLI (agy, claude, gemini, codex, ollama) or API key (Gemini, OpenAI, Anthropic, OpenRouter) via curl.
 metadata:
   author: steierma
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 # Smart Push (`/smart-push`)
@@ -26,9 +26,16 @@ Locate `scripts/smart-push.sh` inside this skill's directory and run it against 
 "<SKILL_DIR>/scripts/smart-push.sh" --yes
 ```
 
-If the user specifies a target subdirectory or flags:
+### Monorepo & Multi-Repository Workspace Rules
+
+* **Single Active Sub-Repository:** If the workspace root is a meta-repo / multi-repo folder (containing multiple independent Git sub-repositories) and you worked on files inside a specific sub-repository during this session, **automatically pass `--dir "<subrepo-path>"`** even when the user only typed `/smart-push` without a path.
+* **Multiple Modified Sub-Repositories:** If the current task modified files across multiple independent Git sub-repositories, invoke `smart-push.sh --yes --dir "<subrepo>"` separately for each modified sub-repository (never mix independent repositories).
+* **Ambiguous Meta-Repo Root:** If `smart-push.sh` reports dirty sub-repositories when run from a clean parent directory and no sub-repository was active in this conversation, ask the user which listed sub-repository to push (or pass `--all-subrepos` if the user explicitly asks to push all).
+
+### Optional Flags
 
 * Target specific repository path: `"<SKILL_DIR>/scripts/smart-push.sh" --yes --dir "<repo-path>"`
+* Push all dirty immediate sub-repositories: `"<SKILL_DIR>/scripts/smart-push.sh" --yes --all-subrepos`
 * Force Conventional Commit scope: `"<SKILL_DIR>/scripts/smart-push.sh" --yes --scope "<scope>"`
 * Commit without pushing: `"<SKILL_DIR>/scripts/smart-push.sh" --yes --commit-only`
 * Preview message without committing: `"<SKILL_DIR>/scripts/smart-push.sh" --dry-run`
