@@ -1,0 +1,8 @@
+# OS & Editor
+.DS_Store
+*.swp
+*~
+
+# Temporary benchmark & test artifacts
+.smart-push-metrics.json
+benchmarks/tmp/
