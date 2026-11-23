@@ -35,7 +35,12 @@ if [[ -d "${HOME}/.codex" ]]; then
   install_skill_link "${HOME}/.codex/skills" "OpenAI Codex"
 fi
 
-# 5. Terminal CLI (~/.local/bin/smart-push) + git smart-push alias
+# 5. GitHub Copilot personal skills (if ~/.copilot exists)
+if [[ -d "${HOME}/.copilot" ]]; then
+  install_skill_link "${HOME}/.copilot/skills" "GitHub Copilot"
+fi
+
+# 6. Terminal CLI (~/.local/bin/smart-push) + git smart-push alias
 mkdir -p "${HOME}/.local/bin"
 ln -sfn "$SCRIPT_SRC" "${HOME}/.local/bin/smart-push"
 git config --global alias.smart-push "!${HOME}/.local/bin/smart-push"

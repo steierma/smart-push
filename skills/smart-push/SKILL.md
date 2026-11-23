@@ -3,9 +3,6 @@ name: smart-push
 description: Stage changes, scan for leaked secrets, generate a Conventional Commit message using a fast low-cost LLM outside the main conversation context, and push to Git. Activate when the user types /smart-push or asks to smart-push without polluting the active chat context.
 license: MIT
 compatibility: Requires git, bash, and python3; uses any installed AI CLI (agy, claude, gemini, codex, ollama) or API key (Gemini, OpenAI, Anthropic, OpenRouter) via curl.
-metadata:
-  author: steierma
-  version: "0.1.1"
 ---
 
 # Smart Push (`/smart-push`)

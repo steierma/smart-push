@@ -53,6 +53,11 @@ Works with Claude Code, Cursor, GitHub Copilot, Windsurf, Codex, and Antigravity
 npx skills add steierma/smart-push
 ```
 
+> **GitHub Copilot note:**
+> - With `npx skills`, you can target Copilot directly via `npx skills add steierma/smart-push --agent copilot`.
+> - With Copilot CLI `/skills add <path>`, point to the `skills/smart-push` subdirectory (the folder containing `SKILL.md`), **not** the repository root.
+> - Alternatively, copy or symlink `skills/smart-push` into `.github/skills/smart-push` (project) or `~/.copilot/skills/smart-push` (personal, also handled by `install.sh`).
+
 ### Option 2: Google Antigravity (`agy`) Plugin
 ```bash
 agy plugin install https://github.com/steierma/smart-push
