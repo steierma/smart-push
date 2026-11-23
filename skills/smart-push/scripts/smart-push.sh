@@ -132,6 +132,9 @@ if git diff --cached --quiet; then
     NESTED_EXCLUDES=()
     for sub in */; do
       [[ -d "${sub}.git" ]] || continue
+      if git check-ignore -q "${sub%/}" 2>/dev/null; then
+        continue
+      fi
       if [[ ! -f .gitmodules ]] || ! grep -q "path = ${sub%/}" .gitmodules 2>/dev/null; then
         NESTED_EXCLUDES+=(":(exclude)${sub%/}")
       fi
@@ -200,21 +203,29 @@ PATTERNS = [
 ]
 
 current_file = "<unknown>"
+line_no = 0
+hunk_re = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)")
 findings = []
 for raw in sys.stdin:
     if raw.startswith("+++ b/"):
         current_file = raw[6:].strip()
+        line_no = 0
+        continue
+    m = hunk_re.match(raw)
+    if m:
+        line_no = int(m.group(1))
         continue
     if not raw.startswith("+") or raw.startswith("+++"):
         continue
     line = raw[1:]
     for label, pat in PATTERNS:
         if pat.search(line):
-            findings.append((current_file, label))
+            findings.append((current_file, line_no, label))
+    line_no += 1
 
 if findings:
-    for fname, label in findings[:5]:
-        print(f"[smart-push] BLOCKED: Potential {label} detected in staged changes ({fname}).", file=sys.stderr)
+    for fname, lno, label in findings[:5]:
+        print(f"[smart-push] BLOCKED: Potential {label} detected in staged changes ({fname}:{lno}).", file=sys.stderr)
     sys.exit(1)
 '; then
     exit 1

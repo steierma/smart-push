@@ -270,4 +270,19 @@ assert d["model"] == "gpt-4.1", d
 PY
 pass "Supports copilot CLI provider (default model, --model override, fallback, and auto-detection)"
 
+# Test 8: Skips gitignored nested repos in exclude pathspecs during auto-staging
+T8="${TMP_BASE}/t8-ignored-nested"
+setup_fixture_repo "$T8"
+printf "/*\n!/.gitignore\n!/root-file.txt\n" > "${T8}/.gitignore"
+SMART_PUSH_MOCK_MSG="chore: init root" "$SMART_PUSH" --yes --dir "$T8" --provider mock >/dev/null
+
+setup_fixture_repo "${T8}/ignored-sub"
+echo "hello" > "${T8}/ignored-sub/file.txt"
+echo "updated" > "${T8}/root-file.txt"
+SMART_PUSH_MOCK_MSG="chore: update root file" "$SMART_PUSH" --yes --dir "$T8" --provider mock >/dev/null
+[[ "$(git -C "$T8" log -1 --pretty=%s)" == "chore: update root file" ]] || fail "T8: local commit mismatch"
+[[ "$(git --git-dir="${T8}-remote.git" log -1 --pretty=%s)" == "chore: update root file" ]] || fail "T8: remote commit mismatch"
+[[ -z "$(git -C "$T8" ls-files ignored-sub)" ]] || fail "T8: ignored-sub should not be tracked"
+pass "Skips gitignored nested repos in exclude pathspecs during auto-staging"
+
 echo "All tests passed."
