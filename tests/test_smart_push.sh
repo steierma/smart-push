@@ -161,4 +161,113 @@ if yaml is not None:
 PY
 pass "SKILL.md frontmatter is flat, UTF-8 without BOM, and Copilot-compatible"
 
+# Test 7: GitHub Copilot CLI provider support (explicit, --model override, fallback, and auto)
+COPILOT_BIN="${TMP_BASE}/copilot-only-bin"
+mkdir -p "$COPILOT_BIN"
+for cmd in env bash dirname basename python3 git grep; do
+  resolved="$(command -v "$cmd")"
+  ln -s "$resolved" "${COPILOT_BIN}/${cmd}"
+done
+
+cat > "${COPILOT_BIN}/copilot" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+has_prompt=0
+has_silent=0
+model=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -p|--prompt)
+      has_prompt=1
+      shift 2
+      ;;
+    --model)
+      model="${2:-}"
+      shift 2
+      ;;
+    --silent|-s)
+      has_silent=1
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+if [[ "$has_prompt" -ne 1 || "$has_silent" -ne 1 ]]; then
+  echo "copilot stub: missing -p or --silent" >&2
+  exit 2
+fi
+
+if [[ -n "${COPILOT_LOG:-}" ]]; then
+  echo "model=${model:-<none>} silent=${has_silent}" >> "$COPILOT_LOG"
+fi
+
+if [[ -n "${COPILOT_FAIL_MODEL:-}" && "$model" == "${COPILOT_FAIL_MODEL}" ]]; then
+  echo "copilot stub: model ${model} unavailable" >&2
+  exit 1
+fi
+
+echo "${COPILOT_MOCK_MSG:-feat(copilot): generate commit via copilot cli}"
+EOF
+chmod +x "${COPILOT_BIN}/copilot"
+
+T7="${TMP_BASE}/t7"
+setup_fixture_repo "$T7"
+
+# 7a: Explicit --provider copilot uses default gpt-4.1
+echo "console.log('a');" > "${T7}/a.js"
+COPILOT_LOG="${T7}/copilot.log" PATH="$COPILOT_BIN" \
+  "$SMART_PUSH" --yes --dir "$T7" --provider copilot --metrics-json "${T7}/metrics-7a.json" >/dev/null
+[[ "$(git -C "$T7" log -1 --pretty=%s)" == "feat(copilot): generate commit via copilot cli" ]] || fail "7a: local commit mismatch"
+[[ "$(git --git-dir="${T7}-remote.git" log -1 --pretty=%s)" == "feat(copilot): generate commit via copilot cli" ]] || fail "7a: remote commit mismatch"
+grep -q "model=gpt-4.1 silent=1" "${T7}/copilot.log" || fail "7a: expected --model gpt-4.1 and --silent in copilot call"
+python3 - "${T7}/metrics-7a.json" <<'PY' || fail "7a: metrics.json mismatch"
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert d["provider"] == "copilot", d
+assert d["model"] == "gpt-4.1", d
+PY
+
+# 7b: Explicit --model override
+echo "console.log('b');" > "${T7}/b.js"
+COPILOT_LOG="${T7}/copilot-7b.log" COPILOT_MOCK_MSG="feat(copilot): use custom model" PATH="$COPILOT_BIN" \
+  "$SMART_PUSH" --yes --dir "$T7" --provider copilot --model gpt-5-mini --metrics-json "${T7}/metrics-7b.json" >/dev/null
+grep -q "model=gpt-5-mini silent=1" "${T7}/copilot-7b.log" || fail "7b: expected --model gpt-5-mini"
+python3 - "${T7}/metrics-7b.json" <<'PY' || fail "7b: metrics.json mismatch"
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert d["provider"] == "copilot", d
+assert d["model"] == "gpt-5-mini", d
+PY
+
+# 7c: Default model fallback when gpt-4.1 fails and no --model override was passed
+echo "console.log('c');" > "${T7}/c.js"
+COPILOT_LOG="${T7}/copilot-7c.log" COPILOT_FAIL_MODEL="gpt-4.1" COPILOT_MOCK_MSG="feat(copilot): fallback to default model" PATH="$COPILOT_BIN" \
+  "$SMART_PUSH" --yes --dir "$T7" --provider copilot --metrics-json "${T7}/metrics-7c.json" >/dev/null
+grep -q "model=<none> silent=1" "${T7}/copilot-7c.log" || fail "7c: expected fallback call without --model"
+python3 - "${T7}/metrics-7c.json" <<'PY' || fail "7c: metrics.json mismatch"
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert d["provider"] == "copilot", d
+assert d["model"] == "default", d
+PY
+
+# 7d: --provider auto auto-detects copilot when only copilot is available and API keys are unset
+echo "console.log('d');" > "${T7}/d.js"
+(
+  unset GEMINI_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY OPENROUTER_API_KEY
+  COPILOT_LOG="${T7}/copilot-7d.log" PATH="$COPILOT_BIN" \
+    "$SMART_PUSH" --yes --dir "$T7" --dry-run --metrics-json "${T7}/metrics-7d.json" >/dev/null
+)
+python3 - "${T7}/metrics-7d.json" <<'PY' || fail "7d: metrics.json mismatch"
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert d["provider"] == "copilot", d
+assert d["model"] == "gpt-4.1", d
+PY
+pass "Supports copilot CLI provider (default model, --model override, fallback, and auto-detection)"
+
 echo "All tests passed."

@@ -2,7 +2,7 @@
 name: smart-push
 description: Stage changes, scan for leaked secrets, generate a Conventional Commit message using a fast low-cost LLM outside the main conversation context, and push to Git. Activate when the user types /smart-push or asks to smart-push without polluting the active chat context.
 license: MIT
-compatibility: Requires git, bash, and python3; uses any installed AI CLI (agy, claude, gemini, codex, ollama) or API key (Gemini, OpenAI, Anthropic, OpenRouter) via curl.
+compatibility: Requires git, bash, and python3; uses any installed AI CLI (agy, claude, gemini, codex, copilot, ollama) or API key (Gemini, OpenAI, Anthropic, OpenRouter) via curl.
 ---
 
 # Smart Push (`/smart-push`)
@@ -36,7 +36,7 @@ Locate `scripts/smart-push.sh` inside this skill's directory and run it against 
 * Force Conventional Commit scope: `"<SKILL_DIR>/scripts/smart-push.sh" --yes --scope "<scope>"`
 * Commit without pushing: `"<SKILL_DIR>/scripts/smart-push.sh" --yes --commit-only`
 * Preview message without committing: `"<SKILL_DIR>/scripts/smart-push.sh" --dry-run`
-* Force a specific AI provider: `"<SKILL_DIR>/scripts/smart-push.sh" --yes --provider <auto|agy|claude|gemini-cli|codex|ollama|gemini-api|openai-api|anthropic-api|openrouter-api>`
+* Force a specific AI provider: `"<SKILL_DIR>/scripts/smart-push.sh" --yes --provider <auto|agy|claude|gemini-cli|codex|copilot|ollama|gemini-api|openai-api|anthropic-api|openrouter-api>`
 
 ## Error Handling
 

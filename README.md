@@ -6,7 +6,7 @@ When you ask an AI coding assistant (Claude Code, Google Antigravity, GitHub Cop
 
 **`smart-push` fixes this:**
 1. **`0` Diff Tokens in Your Main Chat:** The `/smart-push` skill instructs your coding agent **never** to read `git diff`. Instead, it invokes `scripts/smart-push.sh` in a single command.
-2. **Automatic Low-Cost Model Selection:** `smart-push.sh` auto-detects your existing AI CLIs (`agy`, `claude`, `gemini`, `codex`, `ollama`) **or** API keys (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`) and generates a clean [Conventional Commit](https://www.conventionalcommits.org/) using the fastest, cheapest model tier (`flash-lite`, `flash-low`, `gpt-4o-mini`, `haiku`, or local Ollama).
+2. **Automatic Low-Cost Model Selection:** `smart-push.sh` auto-detects your existing AI CLIs (`agy`, `claude`, `gemini`, `codex`, `copilot`, `ollama`) **or** API keys (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`) and generates a clean [Conventional Commit](https://www.conventionalcommits.org/) using the fastest, cheapest model tier (`flash-lite`, `flash-low`, `gpt-4o-mini`, `haiku`, or local Ollama).
 3. **Pre-LLM Secret Leak Guard:** Scans staged diffs locally for private keys, API tokens, and `.env` files **before** sending a single byte to any external LLM or creating a commit.
 
 ---
@@ -116,7 +116,8 @@ git smart-push --all-subrepos
 | 6 | `claude` | `claude` CLI in `$PATH` | `haiku` |
 | 7 | `gemini-cli` | `gemini` CLI in `$PATH` | `gemini-2.5-flash` |
 | 8 | `codex` | `codex` CLI in `$PATH` | `codex-mini` |
-| 9 | `ollama` | `ollama` CLI in `$PATH` (`$OLLAMA_HOST`) | `qwen2.5-coder:3b` |
+| 9 | `copilot` | `copilot` CLI in `$PATH` | `gpt-4.1` *(0x included; falls back to CLI default)* |
+| 10 | `ollama` | `ollama` CLI in `$PATH` (`$OLLAMA_HOST`) | `qwen2.5-coder:3b` |
 
 ---
 

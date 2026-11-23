@@ -28,7 +28,7 @@ Options:
       --all-subrepos        Commit & push each dirty immediate child Git repository
   -p, --provider <name>     AI provider: auto (default), gemini-api, openai-api,
                             anthropic-api, openrouter-api, ollama, agy, claude,
-                            gemini-cli, codex
+                            gemini-cli, codex, copilot
   -m, --model <model>       Override default low-cost model for the chosen provider
   -s, --scope <scope>       Optional Conventional Commit scope hint (e.g. auth, api)
       --commit-only         Create the commit locally without running git push
@@ -493,6 +493,24 @@ ${USER_PAYLOAD}"
   RAW_MSG="$out"
 }
 
+call_copilot_cli() {
+  local model="${MODEL_OVERRIDE:-gpt-4.1}"
+  local full_prompt="${SYSTEM_PROMPT}
+CRITICAL: Do NOT call any tools or shell commands. Everything you need is below. Reply immediately in 1 turn with ONLY the single-line commit message.
+
+${USER_PAYLOAD}"
+  local out
+  if [[ -n "$MODEL_OVERRIDE" ]]; then
+    out="$(copilot -p "$full_prompt" --model "$model" --silent)"
+  elif ! out="$(copilot -p "$full_prompt" --model "$model" --silent 2>/dev/null)" || [[ -z "${out//[$' \t\r\n']/}" ]]; then
+    out="$(copilot -p "$full_prompt" --silent)"
+    model="default"
+  fi
+  USED_PROVIDER="copilot"
+  USED_MODEL="$model"
+  RAW_MSG="$out"
+}
+
 call_mock_provider() {
   USED_PROVIDER="mock"
   USED_MODEL="mock-deterministic"
@@ -528,6 +546,7 @@ select_and_generate() {
     claude) call_claude_cli ;;
     gemini-cli) call_gemini_cli ;;
     codex) call_codex_cli ;;
+    copilot) call_copilot_cli ;;
     auto)
       if [[ -n "${GEMINI_API_KEY:-}" ]]; then
         call_gemini_api
@@ -545,10 +564,12 @@ select_and_generate() {
         call_gemini_cli
       elif command -v codex >/dev/null 2>&1; then
         call_codex_cli
+      elif command -v copilot >/dev/null 2>&1; then
+        call_copilot_cli
       elif command -v ollama >/dev/null 2>&1; then
         call_ollama
       else
-        echo "[smart-push] Error: No AI CLI (agy, claude, gemini, codex, ollama) or API key (GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY) found." >&2
+        echo "[smart-push] Error: No AI CLI (agy, claude, gemini, codex, copilot, ollama) or API key (GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY) found." >&2
         exit 1
       fi
       ;;
